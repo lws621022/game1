@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Emoji 跑酷大冒險</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            touch-action: manipulation;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f9ff;
+        }
+        canvas {
+            display: block;
+            background: linear-gradient(to bottom, #87CEEB 0%, #E0F2FE 100%);
+        }
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn {
+            pointer-events: auto;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-overlay">
+        <!-- 分數顯示 -->
+        <div class="absolute top-5 left-5 text-2xl font-bold text-blue-800 bg-white/50 px-4 py-2 rounded-full shadow-sm">
+            得分: <span id="scoreVal">0</span>
+        </div>
+        
+        <!-- 開始/死亡選單 -->
+        <div id="menu" class="bg-white/90 p-8 rounded-3xl shadow-2xl text-center pointer-events-auto">
+            <h1 id="menuTitle" class="text-4xl font-black text-blue-600 mb-4">Emoji 跑酷</h1>
+            <p id="menuText" class="text-gray-600 mb-6">按下空白鍵或點擊螢幕跳躍！</p>
+            <button id="startBtn" class="btn bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-10 rounded-full text-xl">
+                開始遊戲
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreVal = document.getElementById('scoreVal');
+        const menu = document.getElementById('menu');
+        const menuTitle = document.getElementById('menuTitle');
+        const menuText = document.getElementById('menuText');
+        const startBtn = document.getElementById('startBtn');
+
+        // 遊戲狀態
+        let gameState = 'START';
+        let score = 0;
+        let animationId;
+
+        // 遊戲設定
+        const gravity = 0.7;
+        const jumpStrength = -16;
+        const groundHeight = 80;
+        let gameSpeed = 6;
+
+        // 角色物件
+        const player = {
+            x: 80,
+            y: 0,
+            width: 50,
+            height: 50,
+            dy: 0,
+            jumpCount: 0,
+            emoji: '🏃'
+        };
+
+        // 障礙物與裝飾
+        let obstacles = [];
+        let decorations = [];
+        const obstacleEmojis = ['🌵', '🔥', '🏢', '📦', '💣'];
+        const decorEmojis = ['🌳', '🌲', '🌸', '🌻'];
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            player.y = canvas.height - groundHeight - player.height;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        function handleJump() {
+            if (gameState === 'PLAYING') {
+                if (player.jumpCount < 2) {
+                    player.dy = jumpStrength;
+                    player.jumpCount++;
+                }
+            } else if (gameState === 'START' || gameState === 'GAMEOVER') {
+                startGame();
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') handleJump();
+        });
+        window.addEventListener('touchstart', (e) => {
+            handleJump();
+        }, { passive: false });
+
+        startBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            startGame();
+        });
+
+        function startGame() {
+            gameState = 'PLAYING';
+            score = 0;
+            gameSpeed = 7;
+            obstacles = [];
+            decorations = [];
+            player.y = canvas.height - groundHeight - player.height;
+            player.dy = 0;
+            player.jumpCount = 0;
+            menu.classList.add('hidden');
+            scoreVal.innerText = score;
+            requestAnimationFrame(update);
+        }
+
+        function spawnObstacle() {
+            const size = 45 + Math.random() * 15;
+            const emoji = obstacleEmojis[Math.floor(Math.random() * obstacleEmojis.length)];
+            obstacles.push({
+                x: canvas.width + 100,
+                y: canvas.height - groundHeight - size,
+                width: size,
+                height: size,
+                emoji: emoji
+            });
+        }
+
+        function spawnDecoration() {
+            const size = 30 + Math.random() * 20;
+            const emoji = decorEmojis[Math.floor(Math.random() * decorEmojis.length)];
+            decorations.push({
+                x: canvas.width + 100,
+                y: canvas.height - groundHeight - size + 10,
+                width: size,
+                emoji: emoji
+            });
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            cancelAnimationFrame(animationId);
+            menuTitle.innerText = '遊戲結束！';
+            menuTitle.style.color = '#ef4444';
+            menuText.innerText = `最終得分：${Math.floor(score)}`;
+            startBtn.innerText = '再試一次';
+            menu.classList.remove('hidden');
+        }
+
+        function update() {
+            if (gameState !== 'PLAYING') return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. 繪製背景裝飾（雲朵）
+            ctx.font = '50px Arial';
+            ctx.fillText('☁️', 150, 120);
+            ctx.fillText('☁️', canvas.width - 250, 180);
+
+            // 2. 繪製地面
+            ctx.fillStyle = '#4ade80';
+            ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
+            ctx.fillStyle = '#166534';
+            ctx.fillRect(0, canvas.height - groundHeight, canvas.width, 4);
+
+            // 3. 生成與繪製環境裝飾（樹木花朵）
+            if (Math.random() < 0.01) spawnDecoration();
+            for (let i = decorations.length - 1; i >= 0; i--) {
+                const d = decorations[i];
+                d.x -= gameSpeed * 0.8; // 背景移動稍微慢一點，產生景深感
+                ctx.font = `${d.width}px Arial`;
+                ctx.fillText(d.emoji, d.x, d.y);
+                if (d.x + 100 < 0) decorations.splice(i, 1);
+            }
+
+            // 4. 角色物理計算
+            player.dy += gravity;
+            player.y += player.dy;
+
+            if (player.y > canvas.height - groundHeight - player.height) {
+                player.y = canvas.height - groundHeight - player.height;
+                player.dy = 0;
+                player.jumpCount = 0;
+            }
+
+            // 5. 繪製角色 (關鍵：水平翻轉使其朝右)
+            ctx.save();
+            // 移動畫布原點到角色中心
+            ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+            // 水平縮放 -1 實現鏡像翻轉
+            ctx.scale(-1, 1); 
+            ctx.font = `${player.height}px Arial`;
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'center';
+            // 繪製 Emoji (因為座標已位移至中心，所以畫在 0,0)
+            ctx.fillText(player.emoji, 0, 0);
+            ctx.restore();
+
+            // 6. 障礙物邏輯
+            if (Math.random() < 0.02) {
+                if (obstacles.length === 0 || (canvas.width - obstacles[obstacles.length - 1].x > 350)) {
+                    spawnObstacle();
+                }
+            }
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                obs.x -= gameSpeed;
+
+                ctx.font = `${obs.height}px Arial`;
+                ctx.textBaseline = 'top';
+                ctx.textAlign = 'left';
+                ctx.fillText(obs.emoji, obs.x, obs.y);
+
+                // 碰撞檢測
+                const p = 12; // 判定縮減量
+                if (
+                    player.x + p < obs.x + obs.width - p &&
+                    player.x + player.width - p > obs.x + p &&
+                    player.y + p < obs.y + obs.height - p &&
+                    player.y + player.height - p > obs.y + p
+                ) {
+                    gameOver();
+                }
+
+                if (obs.x + obs.width < 0) {
+                    obstacles.splice(i, 1);
+                    score += 10;
+                    scoreVal.innerText = score;
+                    gameSpeed += 0.1;
+                }
+            }
+
+            animationId = requestAnimationFrame(update);
+        }
+
+        // 初始地面繪製
+        ctx.fillStyle = '#4ade80';
+        ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
+    </script>
+</body>
+</html>
